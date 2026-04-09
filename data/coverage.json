@@ -1,0 +1,43 @@
+{
+  "mcp": "greek-competition-mcp",
+  "authority": "HCC — Hellenic Competition Commission",
+  "source_url": "https://www.epant.gr/",
+  "legal_basis": "Law 3959/2011 on the Protection of Free Competition",
+  "jurisdiction": "Greece",
+  "language": "English (primary), Greek",
+  "coverage_start": "2010",
+  "coverage_end": "present",
+  "content_types": [
+    {
+      "id": "enforcement_decisions",
+      "description": "Abuse of dominant position, cartel enforcement, sector inquiries",
+      "years": "2010–present"
+    },
+    {
+      "id": "merger_control",
+      "description": "Phase I and Phase II merger control decisions",
+      "years": "2010–present"
+    },
+    {
+      "id": "sector_inquiries",
+      "description": "Formal sector inquiry reports",
+      "years": "2010–present"
+    }
+  ],
+  "sectors": [
+    "energy",
+    "food_retail",
+    "telecommunications",
+    "banking",
+    "pharmaceuticals",
+    "media",
+    "transport"
+  ],
+  "known_gaps": [
+    "Decisions prior to 2010 are not systematically indexed",
+    "Some older decisions may only be available in Greek and are excluded",
+    "Leniency application details are excluded (confidential)",
+    "Informal guidance and settlement documents not published on epant.gr are excluded"
+  ],
+  "update_frequency": "Ongoing — run ingest script to pull new decisions"
+}
