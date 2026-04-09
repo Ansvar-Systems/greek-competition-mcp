@@ -2,8 +2,8 @@
  * SQLite database access layer for the Greek Competition (HCC) MCP server.
  *
  * Schema:
- *   - decisions    — Bundeskartellamt enforcement decisions (abuse of dominance, cartels, sector inquiries)
- *   - mergers      — Merger control decisions (Fusionskontrolle)
+ *   - decisions    — HCC (Hellenic Competition Commission) enforcement decisions (abuse of dominance, cartels, sector inquiries)
+ *   - mergers      — Merger control decisions (Phase I and Phase II)
  *   - sectors      — Sectors with enforcement activity
  *
  * FTS5 virtual tables back full-text search on decisions and mergers.
@@ -171,6 +171,23 @@ export function getDb(): Database.Database {
   _db.exec(SCHEMA_SQL);
 
   return _db;
+}
+
+// --- Data age -----------------------------------------------------------------
+
+/** Returns ISO date string of the most recent decision or merger, or null if empty. */
+export function getDataAge(): string | null {
+  const db = getDb();
+  const row = db
+    .prepare(
+      `SELECT MAX(date) AS max_date FROM (
+         SELECT date FROM decisions WHERE date IS NOT NULL
+         UNION ALL
+         SELECT date FROM mergers WHERE date IS NOT NULL
+       )`,
+    )
+    .get() as { max_date: string | null };
+  return row?.max_date ?? null;
 }
 
 // --- Decision queries ---------------------------------------------------------

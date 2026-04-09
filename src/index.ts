@@ -27,6 +27,7 @@ import {
   searchMergers,
   getMerger,
   listSectors,
+  getDataAge,
 } from "./db.js";
 import { buildCitation } from "./utils/citation.js";
 
@@ -90,7 +91,7 @@ const TOOLS = [
       properties: {
         case_number: {
           type: "string",
-          description: "HCC case number",
+          description: "HCC case number (e.g., 'HCC/700/2023')",
         },
       },
       required: ["case_number"],
@@ -150,6 +151,26 @@ const TOOLS = [
     },
   },
   {
+    name: "gr_comp_list_sources",
+    description:
+      "List the primary data sources used by this MCP, including URLs, publisher, and update frequency.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "gr_comp_check_data_freshness",
+    description:
+      "Check how current the data is: returns the date of the most recent decision or merger in the database and the data source update frequency.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
     name: "gr_comp_about",
     description:
       "Return metadata about this MCP server: version, data source, coverage, and tool list.",
@@ -186,19 +207,41 @@ const GetMergerArgs = z.object({
   case_number: z.string().min(1),
 });
 
-// --- Helper ------------------------------------------------------------------
+// --- Helpers -----------------------------------------------------------------
+
+function responseMeta() {
+  return {
+    disclaimer:
+      "Data sourced from HCC (https://www.epant.gr/). For informational purposes only; not legal advice.",
+    data_age: getDataAge(),
+    copyright: "© Hellenic Competition Commission",
+    source_url: "https://www.epant.gr/",
+  };
+}
 
 function textContent(data: unknown) {
+  const payload = typeof data === "object" && data !== null
+    ? { ...data as Record<string, unknown>, _meta: responseMeta() }
+    : { data, _meta: responseMeta() };
   return {
     content: [
-      { type: "text" as const, text: JSON.stringify(data, null, 2) },
+      { type: "text" as const, text: JSON.stringify(payload, null, 2) },
     ],
   };
 }
 
-function errorContent(message: string) {
+function errorContent(message: string, errorType: string = "unknown") {
   return {
-    content: [{ type: "text" as const, text: message }],
+    content: [
+      {
+        type: "text" as const,
+        text: JSON.stringify(
+          { error: message, _meta: responseMeta(), _error_type: errorType },
+          null,
+          2,
+        ),
+      },
+    ],
     isError: true as const,
   };
 }
@@ -228,14 +271,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           outcome: parsed.outcome,
           limit: parsed.limit,
         });
-        return textContent({ results, count: results.length });
+        const resultsWithCitation = results.map((r) => ({
+          ...r,
+          _citation: buildCitation(
+            r.case_number,
+            r.title,
+            "gr_comp_get_decision",
+            { case_number: r.case_number },
+            undefined,
+          ),
+        }));
+        return textContent({ results: resultsWithCitation, count: results.length });
       }
 
       case "gr_comp_get_decision": {
         const parsed = GetDecisionArgs.parse(args);
         const decision = getDecision(parsed.case_number);
         if (!decision) {
-          return errorContent(`Decision not found: ${parsed.case_number}`);
+          return errorContent(`Decision not found: ${parsed.case_number}`, "not_found");
         }
         const d = decision as Record<string, unknown>;
         return textContent({
@@ -258,14 +311,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           outcome: parsed.outcome,
           limit: parsed.limit,
         });
-        return textContent({ results, count: results.length });
+        const resultsWithCitation = results.map((r) => ({
+          ...r,
+          _citation: buildCitation(
+            r.case_number,
+            r.title,
+            "gr_comp_get_merger",
+            { case_number: r.case_number },
+            undefined,
+          ),
+        }));
+        return textContent({ results: resultsWithCitation, count: results.length });
       }
 
       case "gr_comp_get_merger": {
         const parsed = GetMergerArgs.parse(args);
         const merger = getMerger(parsed.case_number);
         if (!merger) {
-          return errorContent(`Merger case not found: ${parsed.case_number}`);
+          return errorContent(`Merger case not found: ${parsed.case_number}`, "not_found");
         }
         const m = merger as Record<string, unknown>;
         return textContent({
@@ -285,6 +348,35 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return textContent({ sectors, count: sectors.length });
       }
 
+      case "gr_comp_list_sources": {
+        return textContent({
+          sources: [
+            {
+              id: "hcc_epant",
+              name: "Hellenic Competition Commission (HCC)",
+              publisher: "HCC — Hellenic Competition Commission",
+              url: "https://www.epant.gr/",
+              content_types: ["enforcement_decisions", "merger_control", "sector_inquiries"],
+              language: "English (primary), Greek",
+              update_frequency: "Ongoing — new decisions published as issued",
+              legal_basis: "Law 3959/2011 on the Protection of Free Competition",
+            },
+          ],
+        });
+      }
+
+      case "gr_comp_check_data_freshness": {
+        const dataAge = getDataAge();
+        return textContent({
+          most_recent_record_date: dataAge,
+          source_update_frequency: "Ongoing — HCC publishes decisions as they are issued",
+          source_url: "https://www.epant.gr/",
+          note: dataAge
+            ? `Database contains records up to ${dataAge}. Run the ingest script to pull newer decisions.`
+            : "Database appears to be empty. Run the ingest or seed script to populate it.",
+        });
+      }
+
       case "gr_comp_about": {
         return textContent({
           name: SERVER_NAME,
@@ -302,11 +394,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       default:
-        return errorContent(`Unknown tool: ${name}`);
+        return errorContent(`Unknown tool: ${name}`, "unknown_tool");
     }
   } catch (err) {
+    if (err instanceof z.ZodError) {
+      return errorContent(`Invalid arguments for ${name}: ${err.message}`, "invalid_args");
+    }
     const message = err instanceof Error ? err.message : String(err);
-    return errorContent(`Error executing ${name}: ${message}`);
+    return errorContent(`Error executing ${name}: ${message}`, "unknown");
   }
 });
 
