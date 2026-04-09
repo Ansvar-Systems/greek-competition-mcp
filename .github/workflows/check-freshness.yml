@@ -1,0 +1,40 @@
+name: Check Data Freshness
+
+on:
+  schedule:
+    # Run every Monday at 08:00 UTC
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+jobs:
+  check-freshness:
+    name: Verify HCC source currency
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check HCC website reachability
+        run: |
+          HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}" --max-time 30 https://www.epant.gr/)
+          echo "HCC website HTTP status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "::warning::HCC website returned HTTP $HTTP_STATUS — source may be unavailable"
+          else
+            echo "HCC website is reachable."
+          fi
+
+      - name: Check decisions page
+        run: |
+          HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}" --max-time 30 \
+            "https://www.epant.gr/en/decisions/decisions-of-the-hcc.html")
+          echo "Decisions page HTTP status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "::warning::HCC decisions page returned HTTP $HTTP_STATUS"
+          fi
+
+      - name: Summary
+        run: |
+          echo "## Data Freshness Check" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Source:** HCC (https://www.epant.gr/)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Checked at:** $(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Run the ingest workflow to pull new decisions into the database." >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,81 @@
+name: Ingest HCC Decisions
+
+on:
+  schedule:
+    # Run every Sunday at 02:00 UTC
+    - cron: "0 2 * * 0"
+  workflow_dispatch:
+    inputs:
+      year:
+        description: "Ingest only a specific year (e.g. 2024). Leave blank to ingest all years."
+        required: false
+        type: string
+      dry_run:
+        description: "Dry run — crawl but do not write to database"
+        required: false
+        default: "false"
+        type: boolean
+      resume:
+        description: "Resume from last checkpoint (skip already-ingested decisions)"
+        required: false
+        default: "true"
+        type: boolean
+
+jobs:
+  ingest:
+    name: Crawl epant.gr and update database
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Restore database cache
+        uses: actions/cache@v4
+        with:
+          path: data/hcc.db
+          key: hcc-db-${{ github.run_id }}
+          restore-keys: |
+            hcc-db-
+
+      - name: Run ingest script
+        env:
+          HCC_DB_PATH: data/hcc.db
+        run: |
+          ARGS=""
+          if [ "${{ github.event.inputs.resume }}" = "true" ]; then
+            ARGS="$ARGS --resume"
+          fi
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          if [ -n "${{ github.event.inputs.year }}" ]; then
+            ARGS="$ARGS --year ${{ github.event.inputs.year }}"
+          fi
+          npx tsx scripts/ingest-hcc.ts $ARGS
+
+      - name: Save database cache
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: data/hcc.db
+          key: hcc-db-${{ github.run_id }}
+
+      - name: Summary
+        run: |
+          echo "## Ingest Complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Source:** HCC (https://www.epant.gr/)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Completed at:** $(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f data/hcc.db ]; then
+            DB_SIZE=$(du -sh data/hcc.db | cut -f1)
+            echo "- **Database size:** $DB_SIZE" >> "$GITHUB_STEP_SUMMARY"
+          fi
