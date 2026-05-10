@@ -250,7 +250,7 @@ function createMcpServer(): Server {
           if (!decision) {
             return errorContent(`Decision not found: ${parsed.case_number}`, "not_found");
           }
-          const d = decision as Record<string, unknown>;
+          const d = decision as unknown as Record<string, unknown>;
           return textContent({
             ...decision,
             _citation: buildCitation(
@@ -290,7 +290,7 @@ function createMcpServer(): Server {
           if (!merger) {
             return errorContent(`Merger case not found: ${parsed.case_number}`, "not_found");
           }
-          const m = merger as Record<string, unknown>;
+          const m = merger as unknown as Record<string, unknown>;
           return textContent({
             ...merger,
             _citation: buildCitation(
